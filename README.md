@@ -1,29 +1,24 @@
 # Photo Viewer
 
-A simple GUI-based photo viewer built with Python and Tkinter.
+A GUI-based photo viewer application built with Python and Tkinter.
 
 ## Features
 
-- **Synchronized File Directory Panel**: The left panel displays the contents of the currently viewed image's directory, keeping the file list in sync with the displayed image.
-- **Image Viewing**: Open and display images (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`).
-- **Seamless Navigation**: Cycle through images in the same directory using "Next" and "Previous" buttons, with the file panel automatically highlighting the current image.
-- **Intuitive Interface**: Simple and easy-to-use GUI.
+- **Drive and Folder Navigation**: The left panel provides a tree view to navigate your computer's drives and folders.
+- **Image Display**: Click on an image file in the navigation panel to display it in the main viewer on the right.
+- **Keyboard Navigation**: Once an image is displayed, use the **Left Arrow** and **Right Arrow** keys to cycle through other images in the same folder.
+- **Synchronized View**: The selection in the navigation panel stays in sync with the image being viewed, automatically highlighting the current file.
 
 ## Prerequisites
 
 - Python 3.x
-- Pip (Python package installer)
+- Pillow library
 
 ## Installation
 
-1.  **Clone the repository or download the source code.**
+1.  **Clone or download the source code.**
 
-2.  **Navigate to the project directory:**
-    ```bash
-    cd path/to/photo-viewer
-    ```
-
-3.  **Install the required dependencies:**
+2.  **Install the required dependencies:**
     This application uses the Pillow library to handle images. You can install it using pip:
     ```bash
     pip install Pillow
@@ -36,7 +31,6 @@ To run the application, execute the following command in your terminal:
 python photo_viewer.py
 ```
 
-This will open the photo viewer window.
-
--   **Opening an Image**: Click the "Open Image" button to select an image. The directory containing that image will be displayed in the left-hand panel, with the selected image highlighted.
--   **Navigating**: Use the "Next" and "Previous" buttons to cycle through images in the current directory. The selection in the file panel will update automatically. You can also click on another image in the panel to view it, or click a directory to navigate to it.
+- **Browse**: Use the left panel to navigate to a folder containing images.
+- **View**: Click on an image file to display it.
+- **Navigate**: Use the arrow keys to move to the next or previous image.
