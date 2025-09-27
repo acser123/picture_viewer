@@ -177,11 +177,11 @@ class PhotoViewer(tk.Tk):
             self._move_selection(-25, auto_open=True)
         elif key == "next":   # PageDown
             self._move_selection(25, auto_open=True)
-        elif key == "plus" or key == "kp_add":
+        elif key == "equal" or key == "kp_equal":
             self.zoom(1.25)  # Zoom in
         elif key == "minus" or key == "kp_subtract":
             self.zoom(0.8)   # Zoom out
-        elif key == "equal" or key == "kp_equal":
+        elif key == "0" or key == "kp_0":
             self.reset_zoom()  # Reset zoom
 
     def _move_selection(self, direction, auto_open=False):
