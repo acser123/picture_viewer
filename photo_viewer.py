@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import os
+import threading
+import queue
 
 class PhotoViewer:
     def __init__(self, root):
@@ -12,6 +14,7 @@ class PhotoViewer:
         self.image_path = None
         self.image_list = []
         self.current_image_index = -1
+        self.queue = queue.Queue()
 
         # Create a PanedWindow for resizable frames
         self.paned_window = tk.PanedWindow(root, orient=tk.HORIZONTAL)
@@ -32,6 +35,7 @@ class PhotoViewer:
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
 
         self.populate_drives()
+        self.process_queue()
 
         # Frame for the image viewer
         self.viewer_frame = tk.Frame(self.paned_window)
@@ -43,6 +47,21 @@ class PhotoViewer:
 
         self.root.bind("<Left>", self.prev_image)
         self.root.bind("<Right>", self.next_image)
+
+    def process_queue(self):
+        try:
+            while True:
+                task = self.queue.get_nowait()
+                action, data = task
+                if action == 'populate_nodes':
+                    for node_data in data:
+                        self.insert_node(node_data['parent'], node_data['path'], node_data['text'])
+                elif action == 'update_image':
+                    self._update_image_display(data)
+        except queue.Empty:
+            pass
+        finally:
+            self.root.after(100, self.process_queue)
 
     def next_image(self, event=None):
         if not self.image_list:
@@ -77,13 +96,20 @@ class PhotoViewer:
         children = self.tree.get_children(item)
         self.tree.delete(*children)
 
+        # Start a background thread to get directory contents
+        threading.Thread(target=self.get_directory_contents, args=(path, item), daemon=True).start()
+
+    def get_directory_contents(self, path, item):
         try:
+            nodes_to_add = []
             for p in sorted(os.listdir(path), key=str.lower):
                 full_path = os.path.join(path, p)
                 if os.path.isdir(full_path):
-                    self.insert_node(item, full_path, p)
+                    nodes_to_add.append({'parent': item, 'path': full_path, 'text': p, 'is_dir': True})
                 elif p.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp")):
-                    self.insert_node(item, full_path, p)
+                    nodes_to_add.append({'parent': item, 'path': full_path, 'text': p, 'is_dir': False})
+            if nodes_to_add:
+                self.queue.put(('populate_nodes', nodes_to_add))
         except OSError:
             pass # Ignore permission errors
 
@@ -97,30 +123,48 @@ class PhotoViewer:
             self.load_image(path)
 
     def load_image(self, path):
-        self.image_path = path
-        directory = os.path.dirname(path)
+        # Starts the background thread for loading
+        threading.Thread(target=self._load_image_in_background, args=(path,), daemon=True).start()
 
-        self.image_list = sorted([
-            os.path.join(directory, f) for f in os.listdir(directory)
-            if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp"))
-        ])
+    def _load_image_in_background(self, path):
         try:
-            self.current_image_index = self.image_list.index(path)
-        except ValueError:
-            self.image_list.append(path)
-            self.current_image_index = len(self.image_list) - 1
+            directory = os.path.dirname(path)
 
-        try:
+            image_list = sorted([
+                os.path.join(directory, f) for f in os.listdir(directory)
+                if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp"))
+            ])
+
+            current_image_index = image_list.index(path)
+
             img = Image.open(path)
+            img.load() # Pre-load image data
+
+            self.queue.put(('update_image', {
+                'path': path,
+                'image_list': image_list,
+                'current_image_index': current_image_index,
+                'image_object': img
+            }))
+        except (ValueError, OSError, IndexError) as e:
+            print(f"Error loading image in background: {e}")
+
+    def _update_image_display(self, data):
+        self.image_path = data['path']
+        self.image_list = data['image_list']
+        self.current_image_index = data['current_image_index']
+
+        try:
+            img = data['image_object']
             w, h = self.viewer_frame.winfo_width(), self.viewer_frame.winfo_height()
-            if w < 2 or h < 2: # Fallback if frame size is not yet determined
+            if w < 2 or h < 2:
                 w, h = 700, 700
             img.thumbnail((w - 20, h - 20))
             photo = ImageTk.PhotoImage(img)
             self.lbl_image.config(image=photo)
             self.lbl_image.image = photo
         except Exception as e:
-            print(f"Error loading image: {e}")
+            print(f"Error updating image display: {e}")
 
         # Synchronize tree selection
         parent_item = self.tree.parent(self.tree.focus())
