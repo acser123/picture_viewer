@@ -72,6 +72,8 @@ class PhotoViewer:
                         self.insert_node(node_data['parent'], node_data['path'], node_data['text'])
                 elif action == 'update_image':
                     self._update_image_display(data)
+                elif action == 'load_failed':
+                    self.is_loading = False
         except queue.Empty:
             pass
         finally:
@@ -163,6 +165,7 @@ class PhotoViewer:
             }))
         except (ValueError, OSError, IndexError) as e:
             print(f"Error loading image in background: {e}")
+            self.gui_queue.put(('load_failed', {'error': str(e)}))
 
     def _update_image_display(self, data):
         self.image_path = data['path']
