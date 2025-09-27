@@ -13,6 +13,7 @@ class PhotoViewer:
         self.image_list = []
         self.current_image_index = -1
         self.current_directory = None
+        self.updating_selection = False
 
         # Create a PanedWindow for resizable frames
         self.paned_window = tk.PanedWindow(root, orient=tk.HORIZONTAL)
@@ -67,6 +68,9 @@ class PhotoViewer:
             pass
 
     def on_tree_select(self, event):
+        if self.updating_selection:
+            return
+
         if not self.tree.selection():
             return
         item = self.tree.selection()[0]
@@ -110,12 +114,14 @@ class PhotoViewer:
             print(f"Error opening image: {e}")
 
         # Synchronize tree selection
+        self.updating_selection = True
         for item in self.tree.get_children(""):
             if self.tree.item(item, "values")[0] == self.image_path:
                 self.tree.selection_set(item)
                 self.tree.focus(item)
                 self.tree.see(item)
                 break
+        self.updating_selection = False
 
     def next_image(self):
         if not self.image_list:
