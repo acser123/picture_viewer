@@ -15,6 +15,7 @@ class PhotoViewer:
         self.image_list = []
         self.current_image_index = -1
         self.queue = queue.Queue()
+        self.exif_window = None
 
         # Create a PanedWindow for resizable frames
         self.paned_window = tk.PanedWindow(root, orient=tk.HORIZONTAL)
@@ -53,6 +54,7 @@ class PhotoViewer:
 
         self.root.bind("<Left>", self.prev_image)
         self.root.bind("<Right>", self.next_image)
+        self.root.bind("<i>", self.show_exif_data)
 
     def process_queue(self):
         try:
@@ -186,7 +188,11 @@ class PhotoViewer:
             finally:
                 self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
 
-    def show_exif_data(self):
+    def show_exif_data(self, event=None):
+        if self.exif_window and self.exif_window.winfo_exists():
+            self.exif_window.destroy()
+            return
+
         if not self.image_path:
             tk.messagebox.showinfo("EXIF Info", "No image loaded.")
             return
@@ -199,12 +205,13 @@ class PhotoViewer:
                 tk.messagebox.showinfo("EXIF Info", "No EXIF data found for this image.")
                 return
 
-            exif_window = tk.Toplevel(self.root)
-            exif_window.title(f"EXIF Data for {os.path.basename(self.image_path)}")
-            exif_window.geometry("600x400")
+            self.exif_window = tk.Toplevel(self.root)
+            self.exif_window.title(f"EXIF Data for {os.path.basename(self.image_path)}")
+            self.exif_window.geometry("600x400")
+            self.exif_window.bind("<Destroy>", self._on_exif_window_close)
 
-            text_area = tk.Text(exif_window, wrap="word", height=20, width=80)
-            scrollbar = tk.Scrollbar(exif_window, command=text_area.yview)
+            text_area = tk.Text(self.exif_window, wrap="word", height=20, width=80)
+            scrollbar = tk.Scrollbar(self.exif_window, command=text_area.yview)
             text_area.config(yscrollcommand=scrollbar.set)
 
             scrollbar.pack(side="right", fill="y")
@@ -224,6 +231,9 @@ class PhotoViewer:
 
         except Exception as e:
             tk.messagebox.showerror("Error", f"Error reading EXIF data: {e}")
+
+    def _on_exif_window_close(self, event=None):
+        self.exif_window = None
 
 if __name__ == "__main__":
     root = tk.Tk()
