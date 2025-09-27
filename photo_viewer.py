@@ -17,6 +17,7 @@ class PhotoViewer:
         self.gui_queue = queue.Queue()
         self.request_queue = queue.Queue()
         self.exif_window = None
+        self.is_loading = False
 
         # Create and start the single worker thread
         self.worker_thread = threading.Thread(target=self._worker_thread_loop, daemon=True)
@@ -77,13 +78,13 @@ class PhotoViewer:
             self.root.after(100, self.process_queue)
 
     def next_image(self, event=None):
-        if not self.image_list:
+        if self.is_loading or not self.image_list:
             return
         self.current_image_index = (self.current_image_index + 1) % len(self.image_list)
         self.load_image(self.image_list[self.current_image_index])
 
     def prev_image(self, event=None):
-        if not self.image_list:
+        if self.is_loading or not self.image_list:
             return
         self.current_image_index = (self.current_image_index - 1 + len(self.image_list)) % len(self.image_list)
         self.load_image(self.image_list[self.current_image_index])
@@ -127,7 +128,7 @@ class PhotoViewer:
             pass # Ignore permission errors
 
     def on_tree_select(self, event):
-        if not self.tree.selection():
+        if self.is_loading or not self.tree.selection():
             return
         item = self.tree.selection()[0]
         path = self.tree.item(item, "values")[0]
@@ -136,6 +137,7 @@ class PhotoViewer:
             self.load_image(path)
 
     def load_image(self, path):
+        self.is_loading = True
         # Put a request in the queue for the worker thread
         self.request_queue.put(('load_img', {'path': path}))
 
@@ -192,6 +194,8 @@ class PhotoViewer:
                         break
             finally:
                 self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
+
+        self.is_loading = False
 
     def show_exif_data(self, event=None):
         if self.exif_window and self.exif_window.winfo_exists():
