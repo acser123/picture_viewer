@@ -11,7 +11,7 @@ class PhotoViewer(tk.Tk):
         self.title("Photo Viewer (Tkinter)")
         self.geometry("1000x600")
         self.fullscreen = False  # Track fullscreen state
-
+        self.zoom_factor = 1.0   # Current zoom factor
         # Split into left (tree) and right (image)
         self.pane = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         self.pane.pack(fill=tk.BOTH, expand=True)
@@ -118,26 +118,46 @@ class PhotoViewer(tk.Tk):
                     self.current_index = 0
                 self.show_image(file_path)
 
-    def show_image(self, file_path):
-        try:
-            img = Image.open(file_path)
-            w = max(50, self.img_label.winfo_width())
-            h = max(50, self.img_label.winfo_height())
-            if w < 100 or h < 100:
-                w = max(w, int(self.winfo_width() * 0.6) or 800)
-                h = max(h, int(self.winfo_height() * 0.8) or 600)
-            img.thumbnail((w, h), Image.LANCZOS)
-            self.tk_image = ImageTk.PhotoImage(img)
-            self.img_label.config(image=self.tk_image, text="")
-            self.current_path = file_path
+      # ------------------- Show / zoom image -------------------
+    def show_image(self, file_path, fit_to_screen=True):
+          try:
+              img = Image.open(file_path)
+              self.original_image = img.copy()
+              self.current_path = file_path
 
-            # Update EXIF window if it exists
-            if self.exif_window and self.exif_window.winfo_exists():
-                self.update_exif_window()
-        except Exception as e:
-            self.img_label.config(text=f"Error loading image:\n{e}", image="")
-            self.tk_image = None
-            self.current_path = None
+              if fit_to_screen:
+                  self.zoom_factor = 1.0
+                  w = max(50, self.img_label.winfo_width())
+                  h = max(50, self.img_label.winfo_height())
+                  img.thumbnail((w, h), Image.LANCZOS)
+              else:
+                  w, h = int(img.width * self.zoom_factor), int(img.height * self.zoom_factor)
+                  img = img.resize((w, h), Image.LANCZOS)
+
+              self.tk_image = ImageTk.PhotoImage(img)
+              self.img_label.config(image=self.tk_image, text="")
+
+              if self.exif_window and self.exif_window.winfo_exists():
+                  self.update_exif_window()
+
+          except Exception as e:
+              self.img_label.config(text=f"Error loading image:\n{e}", image="")
+              self.tk_image = None
+              self.current_path = None
+            
+    def zoom(self, factor):
+        if not self.original_image:
+            return
+        self.zoom_factor *= factor
+        w = max(1, int(self.original_image.width * self.zoom_factor))
+        h = max(1, int(self.original_image.height * self.zoom_factor))
+        img = self.original_image.resize((w, h), Image.LANCZOS)
+        self.tk_image = ImageTk.PhotoImage(img)
+        self.img_label.config(image=self.tk_image, text="")
+
+    def reset_zoom(self):
+        if self.current_path:
+            self.show_image(self.current_path, fit_to_screen=True)
 
     def _on_key(self, event):
         key = (event.keysym or "").lower()
@@ -153,6 +173,16 @@ class PhotoViewer(tk.Tk):
             self.open_selected()
         elif key == "i":
             self.toggle_exif_window()  # Toggle EXIF window
+        elif key == "prior":  # PageUp
+            self._move_selection(-25, auto_open=True)
+        elif key == "next":   # PageDown
+            self._move_selection(25, auto_open=True)
+        elif key == "plus" or key == "kp_add":
+            self.zoom(1.25)  # Zoom in
+        elif key == "minus" or key == "kp_subtract":
+            self.zoom(0.8)   # Zoom out
+        elif key == "equal" or key == "kp_equal":
+            self.reset_zoom()  # Reset zoom
 
     def _move_selection(self, direction, auto_open=False):
         sel = self.tree.selection()
@@ -179,9 +209,15 @@ class PhotoViewer(tk.Tk):
                 if auto_open:
                     self.open_selected()
 
+    #def _on_resize(self, event):
+  #      if self.current_path:
+   #         self.show_image(self.current_path)
+#
+
+    # ------------------- Resize -------------------
     def _on_resize(self, event):
-        if self.current_path:
-            self.show_image(self.current_path)
+        if self.current_path and self.zoom_factor == 1.0:
+            self.show_image(self.current_path, fit_to_screen=True)
 
     # ------------------- EXIF window functionality -------------------
     def toggle_exif_window(self):
