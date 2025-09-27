@@ -10,6 +10,7 @@ class PhotoViewer(tk.Tk):
         super().__init__()
         self.title("Photo Viewer (Tkinter)")
         self.geometry("1000x600")
+        self.fullscreen = False  # Track fullscreen state
 
         # Split into left (tree) and right (image)
         self.pane = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
@@ -35,11 +36,12 @@ class PhotoViewer(tk.Tk):
         self.current_index = -1
         self.tk_image = None
         self.current_path = None
-        self.exif_window = None  # Toplevel for EXIF data
-        self.exif_text_area = None  # Text widget in EXIF window
+        self.exif_window = None
+        self.exif_text_area = None
 
         # Keyboard navigation
         self.bind_all("<Key>", self._on_key)
+        self.bind_all("<Alt-Return>", self.toggle_fullscreen)
 
         # Resize handler
         self.image_frame.bind("<Configure>", self._on_resize)
@@ -150,7 +152,7 @@ class PhotoViewer(tk.Tk):
         elif key == "return":
             self.open_selected()
         elif key == "i":
-            self.show_exif_window()
+            self.toggle_exif_window()  # Toggle EXIF window
 
     def _move_selection(self, direction, auto_open=False):
         sel = self.tree.selection()
@@ -182,6 +184,15 @@ class PhotoViewer(tk.Tk):
             self.show_image(self.current_path)
 
     # ------------------- EXIF window functionality -------------------
+    def toggle_exif_window(self):
+        """Show or hide the EXIF window."""
+        if self.exif_window and self.exif_window.winfo_exists():
+            self.exif_window.destroy()
+            self.exif_window = None
+            self.exif_text_area = None
+        else:
+            self.show_exif_window()
+
     def show_exif_window(self):
         if not self.current_path:
             messagebox.showinfo("EXIF Info", "No image loaded.")
@@ -245,6 +256,12 @@ class PhotoViewer(tk.Tk):
             self.exif_text_area.delete(1.0, tk.END)
             self.exif_text_area.insert(tk.END, f"Error reading EXIF: {e}")
             self.exif_text_area.config(state="disabled")
+
+    # ------------------- Fullscreen toggle -------------------
+    def toggle_fullscreen(self, event=None):
+        """Toggle fullscreen mode."""
+        self.fullscreen = not self.fullscreen
+        self.attributes("-fullscreen", self.fullscreen)
 
 
 if __name__ == "__main__":
