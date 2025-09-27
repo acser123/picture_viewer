@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ExifTags
 import os
 import threading
 import queue
@@ -44,6 +44,12 @@ class PhotoViewer:
         # Add a label for the image
         self.lbl_image = tk.Label(self.viewer_frame)
         self.lbl_image.pack(fill="both", expand=True)
+
+        self.btn_frame = tk.Frame(self.viewer_frame)
+        self.btn_frame.pack(pady=5)
+
+        self.btn_exif = tk.Button(self.btn_frame, text="Show EXIF", command=self.show_exif_data)
+        self.btn_exif.pack()
 
         self.root.bind("<Left>", self.prev_image)
         self.root.bind("<Right>", self.next_image)
@@ -179,6 +185,45 @@ class PhotoViewer:
                         break
             finally:
                 self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
+
+    def show_exif_data(self):
+        if not self.image_path:
+            tk.messagebox.showinfo("EXIF Info", "No image loaded.")
+            return
+
+        try:
+            img = Image.open(self.image_path)
+            exif_data = img._getexif()
+
+            if not exif_data:
+                tk.messagebox.showinfo("EXIF Info", "No EXIF data found for this image.")
+                return
+
+            exif_window = tk.Toplevel(self.root)
+            exif_window.title(f"EXIF Data for {os.path.basename(self.image_path)}")
+            exif_window.geometry("600x400")
+
+            text_area = tk.Text(exif_window, wrap="word", height=20, width=80)
+            scrollbar = tk.Scrollbar(exif_window, command=text_area.yview)
+            text_area.config(yscrollcommand=scrollbar.set)
+
+            scrollbar.pack(side="right", fill="y")
+            text_area.pack(side="left", fill="both", expand=True)
+
+            decoded_exif = {
+                ExifTags.TAGS.get(tag_id, tag_id): value
+                for tag_id, value in exif_data.items()
+            }
+
+            exif_info = ""
+            for tag, value in decoded_exif.items():
+                exif_info += f"{tag}: {value}\n"
+
+            text_area.insert("1.0", exif_info)
+            text_area.config(state="disabled")
+
+        except Exception as e:
+            tk.messagebox.showerror("Error", f"Error reading EXIF data: {e}")
 
 if __name__ == "__main__":
     root = tk.Tk()
