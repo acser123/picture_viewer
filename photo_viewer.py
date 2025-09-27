@@ -14,8 +14,13 @@ class PhotoViewer:
         self.image_path = None
         self.image_list = []
         self.current_image_index = -1
-        self.queue = queue.Queue()
+        self.gui_queue = queue.Queue()
+        self.request_queue = queue.Queue()
         self.exif_window = None
+
+        # Create and start the single worker thread
+        self.worker_thread = threading.Thread(target=self._worker_thread_loop, daemon=True)
+        self.worker_thread.start()
 
         # Create a PanedWindow for resizable frames
         self.paned_window = tk.PanedWindow(root, orient=tk.HORIZONTAL)
@@ -59,7 +64,7 @@ class PhotoViewer:
     def process_queue(self):
         try:
             while True:
-                task = self.queue.get_nowait()
+                task = self.gui_queue.get_nowait()
                 action, data = task
                 if action == 'populate_nodes':
                     for node_data in data:
@@ -104,8 +109,8 @@ class PhotoViewer:
         children = self.tree.get_children(item)
         self.tree.delete(*children)
 
-        # Start a background thread to get directory contents
-        threading.Thread(target=self.get_directory_contents, args=(path, item), daemon=True).start()
+        # Put a request in the queue for the worker thread
+        self.request_queue.put(('get_dir', {'path': path, 'item': item}))
 
     def get_directory_contents(self, path, item):
         try:
@@ -117,7 +122,7 @@ class PhotoViewer:
                 elif p.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp")):
                     nodes_to_add.append({'parent': item, 'path': full_path, 'text': p, 'is_dir': False})
             if nodes_to_add:
-                self.queue.put(('populate_nodes', nodes_to_add))
+                self.gui_queue.put(('populate_nodes', nodes_to_add))
         except OSError:
             pass # Ignore permission errors
 
@@ -131,8 +136,8 @@ class PhotoViewer:
             self.load_image(path)
 
     def load_image(self, path):
-        # Starts the background thread for loading
-        threading.Thread(target=self._load_image_in_background, args=(path,), daemon=True).start()
+        # Put a request in the queue for the worker thread
+        self.request_queue.put(('load_img', {'path': path}))
 
     def _load_image_in_background(self, path):
         try:
@@ -148,7 +153,7 @@ class PhotoViewer:
             img = Image.open(path)
             img.load() # Pre-load image data
 
-            self.queue.put(('update_image', {
+            self.gui_queue.put(('update_image', {
                 'path': path,
                 'image_list': image_list,
                 'current_image_index': current_image_index,
@@ -234,6 +239,15 @@ class PhotoViewer:
 
     def _on_exif_window_close(self, event=None):
         self.exif_window = None
+
+    def _worker_thread_loop(self):
+        while True:
+            request = self.request_queue.get()
+            action, data = request
+            if action == 'get_dir':
+                self.get_directory_contents(data['path'], data['item'])
+            elif action == 'load_img':
+                self._load_image_in_background(data['path'])
 
 if __name__ == "__main__":
     root = tk.Tk()
