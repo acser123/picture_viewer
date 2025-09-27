@@ -12,6 +12,7 @@ class PhotoViewer:
         self.image_path = None
         self.image_list = []
         self.current_image_index = -1
+        self.current_directory = None
 
         # Create a PanedWindow for resizable frames
         self.paned_window = tk.PanedWindow(root, orient=tk.HORIZONTAL)
@@ -27,10 +28,7 @@ class PhotoViewer:
         self.tree_scroll = tk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
         self.tree_scroll.pack(side="right", fill="y")
         self.tree.config(yscrollcommand=self.tree_scroll.set)
-        self.tree.bind("<<TreeviewOpen>>", self.on_tree_open)
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
-
-        self.populate_tree()
 
         # Frame for the image viewer
         self.viewer_frame = tk.Frame(self.paned_window)
@@ -51,66 +49,57 @@ class PhotoViewer:
         self.btn_next = tk.Button(self.btn_frame, text="Next", command=self.next_image)
         self.btn_next.pack(side="left", padx=5)
 
-    def populate_tree(self):
-        home_dir = os.path.expanduser("~")
-        self.insert_node("", home_dir, home_dir)
+    def populate_tree_for_directory(self, directory):
+        self.tree.delete(*self.tree.get_children())
+        self.current_directory = directory
 
-    def insert_node(self, parent, path, text):
-        node = self.tree.insert(parent, "end", text=text, values=[path], open=False)
-        if os.path.isdir(path):
-            self.tree.insert(node, "end", text="dummy") # Add a dummy item
+        parent_dir = os.path.dirname(directory)
+        self.tree.insert("", "end", text="..", values=[parent_dir], open=False)
 
-    def on_tree_open(self, event):
-        item = self.tree.focus()
-        path = self.tree.item(item, "values")[0]
-        if os.path.isdir(path):
-            # Clear dummy node
-            children = self.tree.get_children(item)
-            self.tree.delete(*children)
-
-            try:
-                for p in os.listdir(path):
-                    full_path = os.path.join(path, p)
-                    if os.path.isdir(full_path):
-                        self.insert_node(item, full_path, p)
-                    elif p.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp")):
-                        self.insert_node(item, full_path, p)
-            except OSError:
-                pass # Ignore permission errors
+        try:
+            for item in sorted(os.listdir(directory)):
+                path = os.path.join(directory, item)
+                if os.path.isdir(path):
+                    self.tree.insert("", "end", text=f"[{item}]", values=[path], open=False)
+                elif item.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp")):
+                    self.tree.insert("", "end", text=item, values=[path], open=False)
+        except OSError:
+            pass
 
     def on_tree_select(self, event):
-        item = self.tree.focus()
+        if not self.tree.selection():
+            return
+        item = self.tree.selection()[0]
         path = self.tree.item(item, "values")[0]
-        if os.path.isfile(path):
-            directory = os.path.dirname(path)
-            self.image_list = [
-                os.path.join(directory, f) for f in os.listdir(directory)
-                if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp"))
-            ]
-            try:
-                self.current_image_index = self.image_list.index(path)
-                self.load_image(path)
-            except (ValueError, IndexError):
-                self.load_image(path)
+
+        if os.path.isdir(path):
+            self.populate_tree_for_directory(path)
+        elif os.path.isfile(path) and path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp")):
+            self.load_image(path)
 
     def open_image(self):
         path = filedialog.askopenfilename(
             filetypes=[("Image Files", "*.png *.jpg *.jpeg *.gif *.bmp")]
         )
         if path:
-            directory = os.path.dirname(path)
-            self.image_list = [
-                os.path.join(directory, f) for f in os.listdir(directory)
-                if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp"))
-            ]
-            try:
-                self.current_image_index = self.image_list.index(path)
-                self.load_image(path)
-            except ValueError:
-                self.load_image(path) # Fallback for case-sensitivity issues
+            self.load_image(path)
 
     def load_image(self, path):
+        directory = os.path.dirname(path)
+        if directory != self.current_directory:
+            self.populate_tree_for_directory(directory)
+
         self.image_path = path
+        self.image_list = sorted([
+            os.path.join(directory, f) for f in os.listdir(directory)
+            if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp"))
+        ])
+        try:
+            self.current_image_index = self.image_list.index(path)
+        except ValueError:
+            self.image_list.append(path)
+            self.current_image_index = len(self.image_list) - 1
+
         try:
             img = Image.open(path)
             img.thumbnail((self.viewer_frame.winfo_width() - 20, self.viewer_frame.winfo_height() - 60))
@@ -120,15 +109,25 @@ class PhotoViewer:
         except Exception as e:
             print(f"Error opening image: {e}")
 
+        # Synchronize tree selection
+        for item in self.tree.get_children(""):
+            if self.tree.item(item, "values")[0] == self.image_path:
+                self.tree.selection_set(item)
+                self.tree.focus(item)
+                self.tree.see(item)
+                break
+
     def next_image(self):
-        if self.image_list:
-            self.current_image_index = (self.current_image_index + 1) % len(self.image_list)
-            self.load_image(self.image_list[self.current_image_index])
+        if not self.image_list:
+            return
+        self.current_image_index = (self.current_image_index + 1) % len(self.image_list)
+        self.load_image(self.image_list[self.current_image_index])
 
     def prev_image(self):
-        if self.image_list:
-            self.current_image_index = (self.current_image_index - 1) % len(self.image_list)
-            self.load_image(self.image_list[self.current_image_index])
+        if not self.image_list:
+            return
+        self.current_image_index = (self.current_image_index - 1 + len(self.image_list)) % len(self.image_list)
+        self.load_image(self.image_list[self.current_image_index])
 
 if __name__ == "__main__":
     root = tk.Tk()

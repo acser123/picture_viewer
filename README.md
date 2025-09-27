@@ -4,9 +4,9 @@ A simple GUI-based photo viewer built with Python and Tkinter.
 
 ## Features
 
-- **File Directory Panel**: Browse your file system with a resizable directory tree.
+- **Synchronized File Directory Panel**: The left panel displays the contents of the currently viewed image's directory, keeping the file list in sync with the displayed image.
 - **Image Viewing**: Open and display images (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`).
-- **Navigation**: Cycle through images in the same directory using "Next" and "Previous" buttons.
+- **Seamless Navigation**: Cycle through images in the same directory using "Next" and "Previous" buttons, with the file panel automatically highlighting the current image.
 - **Intuitive Interface**: Simple and easy-to-use GUI.
 
 ## Prerequisites
@@ -36,8 +36,7 @@ To run the application, execute the following command in your terminal:
 python photo_viewer.py
 ```
 
-This will open the photo viewer window, which is split into two main sections:
--   **File Directory Panel (Left)**: Use the tree view to navigate through your directories. Click on a directory to expand it and see its subdirectories and image files.
--   **Image Viewer (Right)**: Click on an image file in the directory panel to display it here.
+This will open the photo viewer window.
 
-Once an image is loaded, you can use the "Next" and "Previous" buttons to browse other images in the same directory. You can also use the "Open Image" button to open an image using the system's file dialog.
+-   **Opening an Image**: Click the "Open Image" button to select an image. The directory containing that image will be displayed in the left-hand panel, with the selected image highlighted.
+-   **Navigating**: Use the "Next" and "Previous" buttons to cycle through images in the current directory. The selection in the file panel will update automatically. You can also click on another image in the panel to view it, or click a directory to navigate to it.
