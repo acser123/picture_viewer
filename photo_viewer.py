@@ -3,6 +3,67 @@ import platform
 import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import Image, ImageTk, ExifTags
+import cv2
+from ffpyplayer.player import MediaPlayer
+import threading
+import time
+
+class VideoPlayer:
+    def __init__(self, file_path, label):
+        self.path = file_path
+        self.label = label
+        self.cap = cv2.VideoCapture(file_path)
+        self.player = MediaPlayer(file_path)
+        self.playing = threading.Event()
+        self.thread = None
+
+    def play(self):
+        if not self.playing.is_set():
+            self.playing.set()
+            self.thread = threading.Thread(target=self._play_video, daemon=True)
+            self.thread.start()
+
+    def _play_video(self):
+        while self.playing.is_set():
+            ret, frame = self.cap.read()
+            audio_frame, val = self.player.get_frame()
+
+            if not ret:
+                break
+
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(frame)
+
+            # Resize frame to fit label
+            w, h = self.label.winfo_width(), self.label.winfo_height()
+            if w > 1 and h > 1:
+                img.thumbnail((w, h), Image.LANCZOS)
+
+            tk_img = ImageTk.PhotoImage(image=img)
+
+            # Use after to schedule update on main thread
+            self.label.after(0, self.label.config, {'image': tk_img})
+            self.label.image = tk_img # Keep a reference
+
+            if val == 'eof':
+                break
+            elif val is not None:
+                # Sync video to audio
+                time.sleep(val)
+
+        self.stop()
+
+
+    def stop(self):
+        self.playing.clear()
+        if self.thread and self.thread.is_alive():
+             self.thread.join(timeout=0.5)
+        if self.cap:
+            self.cap.release()
+        self.player = None
+        # Clear the label in the main thread
+        if self.label.winfo_exists():
+            self.label.after(0, self.label.config, {'image': ''})
 
 
 class PhotoViewer(tk.Tk):
@@ -25,19 +86,24 @@ class PhotoViewer(tk.Tk):
         # Image frame (right side)
         self.image_frame = ttk.Frame(self.pane)
         self.img_label = tk.Label(
-            self.image_frame, text="Select an image from the left", anchor="center"
+            self.image_frame, text="Select a file from the left", anchor="center"
         )
         self.img_label.pack(fill=tk.BOTH, expand=True)
         self.pane.add(self.image_frame, weight=4)
 
         # State
         self.current_folder = None
-        self.image_files = []
+        self.media_files = []
         self.current_index = -1
         self.tk_image = None
+        self.original_image = None
         self.current_path = None
         self.exif_window = None
         self.exif_text_area = None
+        self.video_player = None
+        self.IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp", ".gif")
+        self.VIDEO_EXTS = (".mp4", ".avi", ".mov", ".mkv")
+        self.SUPPORTED_EXTS = self.IMAGE_EXTS + self.VIDEO_EXTS
 
         # Keyboard navigation
         self.bind_all("<Key>", self._on_key)
@@ -48,6 +114,15 @@ class PhotoViewer(tk.Tk):
 
         # Populate root drives and select first item
         self.populate_roots()
+
+    def cleanup_player(self):
+        if self.video_player:
+            self.video_player.stop()
+            self.video_player = None
+        self.img_label.config(image="", text="Select a file from the left")
+        self.tk_image = None
+        self.original_image = None
+        self.current_path = None
 
     def populate_roots(self):
         if platform.system() == "Windows":
@@ -98,25 +173,30 @@ class PhotoViewer(tk.Tk):
             return
         file_path = values[0]
         if os.path.isfile(file_path):
+            self.cleanup_player()
             folder = os.path.dirname(file_path)
             try:
                 files = [
                     f
                     for f in os.listdir(folder)
-                    if f.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".gif"))
+                    if f.lower().endswith(self.SUPPORTED_EXTS)
                 ]
             except PermissionError:
                 files = []
             files.sort()
             if files:
                 self.current_folder = folder
-                self.image_files = files
+                self.media_files = files
                 basename = os.path.basename(file_path)
-                if basename in self.image_files:
-                    self.current_index = self.image_files.index(basename)
+                if basename in self.media_files:
+                    self.current_index = self.media_files.index(basename)
                 else:
                     self.current_index = 0
-                self.show_image(file_path)
+
+                if file_path.lower().endswith(self.IMAGE_EXTS):
+                    self.show_image(file_path)
+                elif file_path.lower().endswith(self.VIDEO_EXTS):
+                    self.show_video(file_path)
 
       # ------------------- Show / zoom image -------------------
     def show_image(self, file_path, fit_to_screen=True):
@@ -144,7 +224,12 @@ class PhotoViewer(tk.Tk):
               self.img_label.config(text=f"Error loading image:\n{e}", image="")
               self.tk_image = None
               self.current_path = None
-            
+
+    def show_video(self, file_path):
+        self.current_path = file_path
+        self.video_player = VideoPlayer(file_path, self.img_label)
+        self.video_player.play()
+
     def zoom(self, factor):
         if not self.original_image:
             return
@@ -156,7 +241,7 @@ class PhotoViewer(tk.Tk):
         self.img_label.config(image=self.tk_image, text="")
 
     def reset_zoom(self):
-        if self.current_path:
+        if self.current_path and self.current_path.lower().endswith(self.IMAGE_EXTS):
             self.show_image(self.current_path, fit_to_screen=True)
 
     def _on_key(self, event):
@@ -209,15 +294,13 @@ class PhotoViewer(tk.Tk):
                 if auto_open:
                     self.open_selected()
 
-    #def _on_resize(self, event):
-  #      if self.current_path:
-   #         self.show_image(self.current_path)
-#
-
-    # ------------------- Resize -------------------
     def _on_resize(self, event):
         if self.current_path and self.zoom_factor == 1.0:
-            self.show_image(self.current_path, fit_to_screen=True)
+            if self.current_path.lower().endswith(self.IMAGE_EXTS):
+                self.show_image(self.current_path, fit_to_screen=True)
+            # Video resizing can be handled within the VideoPlayer class loop
+            # No explicit action needed here for video, as it resizes on each frame
+            pass
 
     # ------------------- EXIF window functionality -------------------
     def toggle_exif_window(self):
@@ -230,8 +313,8 @@ class PhotoViewer(tk.Tk):
             self.show_exif_window()
 
     def show_exif_window(self):
-        if not self.current_path:
-            messagebox.showinfo("EXIF Info", "No image loaded.")
+        if not self.current_path or self.current_path.lower().endswith(self.VIDEO_EXTS):
+            messagebox.showinfo("EXIF Info", "No image loaded or selected file is a video.")
             return
 
         # Create EXIF window if it doesn't exist
